@@ -27,6 +27,11 @@ python3 -m http.server 8000
 
 Then open `http://localhost:8000`.
 
+## Run on Replit Core
+1. Import this repo into Replit from GitHub.
+2. Click `Run` (uses `.replit` to start a static server on `${PORT:-3000}`).
+3. Set Replit App visibility to `Private` and invite specific collaborators.
+
 ## Notes
 - Opportunity data is seeded for demonstration, not a live grant feed.
 - The current seeded dataset includes more than 20 opportunities and supports progressive loading of all matches.

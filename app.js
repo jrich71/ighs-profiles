@@ -44,6 +44,7 @@ const improvementLabels = {
 };
 
 const RESULT_BATCH_SIZE = 20;
+const TOP_COLLABORATOR_COUNT = 3;
 const DEFAULT_UCSF_PROFILE_IDS = [
   "dilys.walker",
   "elizabeth.fair",
@@ -162,6 +163,24 @@ const populationSuggestionPatterns = [
   "indigenous communities",
   "community health workers",
   "border communities"
+];
+
+const populationRecommendationRules = [
+  { label: "children", patterns: ["children", "child ", "pediatric", "paediatric", "newborn", "infant"] },
+  { label: "adolescents", patterns: ["adolescent", "teen", "youth"] },
+  { label: "women", patterns: ["women", "woman", "maternal", "pregnant", "postpartum"] },
+  { label: "older adults", patterns: ["older adult", "elderly", "geriatric", "aging"] },
+  { label: "rural populations", patterns: ["rural", "remote communities"] },
+  { label: "urban populations", patterns: ["urban", "inner-city"] },
+  { label: "migrant populations", patterns: ["migrant", "immigrant", "refugee", "displaced"] },
+  { label: "indigenous communities", patterns: ["indigenous", "tribal communities", "native communities"] },
+  { label: "community health workers", patterns: ["community health worker", "chw"] },
+  { label: "underserved communities", patterns: ["underserved", "marginalized", "health disparities", "equity"] },
+  { label: "people living with HIV", patterns: ["hiv", "aids"] },
+  { label: "people with tuberculosis", patterns: ["tuberculosis", " tb ", "tb "] },
+  { label: "people who inject drugs", patterns: ["people who inject drugs", "pwid", "inject drugs"] },
+  { label: "men who have sex with men", patterns: ["men who have sex with men", " msm "] },
+  { label: "incarcerated populations", patterns: ["incarcerated", "prison", "jail", "detention"] }
 ];
 
 const stopWords = new Set([
@@ -573,6 +592,14 @@ function autofillProfileFromCvText(cvText, { applyChanges = true } = {}) {
     return false;
   };
 
+  const inferredFullName = inferFullNameFromCv(raw);
+  const fullNameUpdated = applyChanges
+    ? setTextInputIfEmpty("fullName", inferredFullName)
+    : Boolean(inferredFullName) && getInputValue("fullName") === "";
+  if (shouldFlag(fullNameUpdated)) {
+    autofilled.push("full name");
+  }
+
   const inferredCareerStage = inferCategoricalValue(normalized, careerStagePatterns);
   const careerStageUpdated = applyChanges
     ? setSelectIfEmpty("careerStage", inferredCareerStage)
@@ -613,7 +640,7 @@ function autofillProfileFromCvText(cvText, { applyChanges = true } = {}) {
     autofilled.push("methods");
   }
 
-  const populationSuggestions = collectPhraseSuggestions(normalized, populationSuggestionPatterns, 6);
+  const populationSuggestions = collectPopulationSuggestions(normalized, raw);
   const populationsUpdated = applyChanges
     ? setCsvInputIfEmpty("populations", populationSuggestions)
     : populationSuggestions.length > 0 && parseCsv(getInputValue("populations")).length === 0;
@@ -684,6 +711,113 @@ function collectPhraseSuggestions(text, phrases, maxItems) {
   return phrases.filter((phrase) => text.includes(phrase.toLowerCase())).slice(0, maxItems);
 }
 
+function collectPopulationSuggestions(normalizedText, rawText) {
+  const suggestions = new Set(
+    collectPhraseSuggestions(normalizedText, populationSuggestionPatterns, 10)
+  );
+
+  populationRecommendationRules.forEach(({ label, patterns }) => {
+    if (patterns.some((pattern) => normalizedText.includes(pattern.toLowerCase()))) {
+      suggestions.add(label.toLowerCase());
+    }
+  });
+
+  const populationMentions = [
+    ...rawText.matchAll(
+      /(?:among|in|for|with|serving|focused on|targeting)\s+(pregnant women|women|children|adolescents|older adults|migrants?|refugees?|rural communities|urban communities|indigenous communities|community health workers|people who inject drugs|men who have sex with men|incarcerated (?:people|populations))/gi
+    )
+  ].map((match) => normalizePopulationPhrase(match[1]));
+
+  populationMentions.forEach((phrase) => {
+    if (phrase) {
+      suggestions.add(phrase);
+    }
+  });
+
+  if (/\bhiv\b/i.test(rawText) || /\baids\b/i.test(rawText)) {
+    suggestions.add("people living with hiv");
+  }
+  if (/\btuberculosis\b/i.test(rawText) || /\btb\b/i.test(rawText)) {
+    suggestions.add("people with tuberculosis");
+  }
+
+  return Array.from(suggestions).slice(0, 6);
+}
+
+function normalizePopulationPhrase(phrase) {
+  const normalized = phrase.trim().toLowerCase();
+  const mapped = {
+    migrants: "migrant populations",
+    migrant: "migrant populations",
+    refugees: "migrant populations",
+    refugee: "migrant populations",
+    "rural communities": "rural populations",
+    "urban communities": "urban populations",
+    "pregnant women": "women",
+    "incarcerated people": "incarcerated populations"
+  };
+
+  return mapped[normalized] || normalized;
+}
+
+function inferFullNameFromCv(rawText) {
+  const lines = rawText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 25);
+  if (!lines.length) {
+    return "";
+  }
+
+  for (const line of lines) {
+    const labeledMatch = line.match(/^(?:name|full name)\s*[:\-]\s*(.+)$/i);
+    if (labeledMatch && looksLikePersonName(labeledMatch[1])) {
+      return labeledMatch[1].trim();
+    }
+  }
+
+  for (const line of lines) {
+    if (looksLikePersonName(line)) {
+      return line.trim();
+    }
+  }
+
+  return "";
+}
+
+function looksLikePersonName(value) {
+  const candidate = value.trim();
+  if (!candidate || candidate.length < 5 || candidate.length > 60) {
+    return false;
+  }
+  if (/@|https?:\/\/|www\.|\d/.test(candidate)) {
+    return false;
+  }
+
+  const blocked = [
+    "curriculum vitae",
+    "resume",
+    "contact",
+    "education",
+    "experience",
+    "summary",
+    "skills",
+    "publications"
+  ];
+  if (blocked.some((term) => candidate.toLowerCase().includes(term))) {
+    return false;
+  }
+
+  const sanitized = candidate.replace(/,(?:\s*[A-Z]{1,6}\.?)+$/g, "").trim();
+  const parts = sanitized.split(/\s+/);
+  if (parts.length < 2 || parts.length > 5) {
+    return false;
+  }
+
+  return parts.every((part) => /^[A-Za-z][A-Za-z.'-]*$/.test(part));
+}
+
 function inferBudgetNeedFromCv(rawText) {
   const matches = [...rawText.matchAll(/\$?\s*([0-9]{1,3}(?:,[0-9]{3})+)\s*(?:usd|dollars)?/gi)];
   if (!matches.length) {
@@ -726,6 +860,20 @@ function setSelectIfEmpty(id, value) {
   }
 
   element.value = value;
+  return true;
+}
+
+function setTextInputIfEmpty(id, value) {
+  if (!value) {
+    return false;
+  }
+
+  const element = document.getElementById(id);
+  if (!element || element.value.trim()) {
+    return false;
+  }
+
+  element.value = value.trim();
   return true;
 }
 
@@ -1266,7 +1414,8 @@ async function runCollaboratorMatch(forcedOpportunity = null) {
   });
 
   ranked.sort((a, b) => b.score - a.score);
-  renderCollaboratorResults(ranked.slice(0, 10));
+  const topCandidates = ranked.slice(0, TOP_COLLABORATOR_COUNT);
+  renderCollaboratorResults(topCandidates);
 
   if (!ranked.length) {
     collabStatus.textContent =
@@ -1275,7 +1424,7 @@ async function runCollaboratorMatch(forcedOpportunity = null) {
   }
 
   const failureText = failures > 0 ? ` (${failures} profile lookup${failures === 1 ? "" : "s"} failed)` : "";
-  collabStatus.textContent = `Ranked ${ranked.length} collaborator candidates for this opportunity${failureText}.`;
+  collabStatus.textContent = `Showing top ${topCandidates.length} of ${ranked.length} collaborator candidates${failureText}.`;
 }
 
 function getOpportunityById(opportunityId) {
