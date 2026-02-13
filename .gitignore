@@ -1,0 +1,13 @@
+# OS/editor
+.DS_Store
+.vscode/
+.idea/
+
+# Env/secrets
+.env
+.env.*
+
+# Logs/temp
+*.log
+tmp/
+.cache/
