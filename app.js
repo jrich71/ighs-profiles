@@ -772,14 +772,22 @@ function inferFullNameFromCv(rawText) {
 
   for (const line of lines) {
     const labeledMatch = line.match(/^(?:name|full name)\s*[:\-]\s*(.+)$/i);
-    if (labeledMatch && looksLikePersonName(labeledMatch[1])) {
-      return labeledMatch[1].trim();
+    if (labeledMatch) {
+      const normalizedName = normalizePotentialName(labeledMatch[1]);
+      if (looksLikePersonName(normalizedName)) {
+        return normalizedName;
+      }
     }
   }
 
   for (const line of lines) {
-    if (looksLikePersonName(line)) {
-      return line.trim();
+    if (looksLikeLocationLine(line)) {
+      continue;
+    }
+
+    const normalizedName = normalizePotentialName(line);
+    if (looksLikePersonName(normalizedName)) {
+      return normalizedName;
     }
   }
 
@@ -809,13 +817,75 @@ function looksLikePersonName(value) {
     return false;
   }
 
-  const sanitized = candidate.replace(/,(?:\s*[A-Z]{1,6}\.?)+$/g, "").trim();
-  const parts = sanitized.split(/\s+/);
+  const parts = candidate.split(/\s+/);
   if (parts.length < 2 || parts.length > 5) {
     return false;
   }
 
   return parts.every((part) => /^[A-Za-z][A-Za-z.'-]*$/.test(part));
+}
+
+function normalizePotentialName(value) {
+  let candidate = value.replace(/\s+/g, " ").trim();
+  if (!candidate) {
+    return "";
+  }
+
+  candidate = candidate.replace(/\([^)]*\)/g, "").trim();
+  candidate = stripTrailingCredentials(candidate);
+  candidate = candidate.replace(/\s*,\s*(Jr|Sr|II|III|IV)\.?$/i, " $1");
+
+  return candidate.trim();
+}
+
+function stripTrailingCredentials(value) {
+  const segments = value
+    .split(",")
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  if (segments.length <= 1) {
+    return value.trim();
+  }
+
+  let end = segments.length;
+  while (end > 1 && isCredentialSegment(segments[end - 1])) {
+    end -= 1;
+  }
+
+  if (end === segments.length) {
+    return value.trim();
+  }
+
+  return segments.slice(0, end).join(", ");
+}
+
+function isCredentialSegment(segment) {
+  const tokens = segment.split(/\s+/).filter(Boolean);
+  if (!tokens.length || tokens.length > 3 || segment.length > 20 || /\d{3,}/.test(segment)) {
+    return false;
+  }
+
+  return tokens.every((token) => {
+    if (!/^[A-Za-z][A-Za-z.\-]*$/.test(token)) {
+      return false;
+    }
+
+    const letters = token.replace(/[^A-Za-z]/g, "");
+    if (letters.length < 2 || letters.length > 10) {
+      return false;
+    }
+
+    const uppercaseCount = letters.replace(/[^A-Z]/g, "").length;
+    return uppercaseCount / letters.length >= 0.6;
+  });
+}
+
+function looksLikeLocationLine(value) {
+  return (
+    /^[A-Za-z][A-Za-z .'-]+,\s*[A-Z]{2}(?:\s+\d{5}(?:-\d{4})?)?$/.test(value) ||
+    /^[A-Za-z][A-Za-z .'-]+,\s*(?:United States|USA|US|Canada|United Kingdom|UK)$/i.test(value) ||
+    /\b(?:street|st\.|avenue|ave\.|road|rd\.|boulevard|blvd\.|suite|ste\.|apt\.|floor)\b/i.test(value)
+  );
 }
 
 function inferBudgetNeedFromCv(rawText) {
