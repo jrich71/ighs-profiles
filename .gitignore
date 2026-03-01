@@ -1,6 +1,7 @@
 *
 !.gitignore
 !README.md
+!index.html
 !payam-nahid-profile.html
 !scripts/
 !scripts/build_payam_profile.py
