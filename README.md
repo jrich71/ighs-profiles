@@ -1,39 +1,49 @@
-# Global Health Funding Matcher (MVP)
+# Payam Nahid Profile Page (POC)
 
-This is a lightweight web app that matches global health researchers to funding opportunities using profile information plus optional CV/resume text.
+This repository contains a shareable proof-of-concept webpage summarizing Dr. Payam Nahid's current role and recent professional outputs.
 
-## What it does
-- Collects profile details (career stage, institution type, region, focus areas, methods, populations, budget, sponsor preferences).
-- Supports CV/resume upload (`.txt`, `.md`, `.docx`, `.pdf`) and text extraction in-browser when available.
-- Requires CV text input before scoring to improve match quality.
-- Auto-populates intake fields from uploaded CV text when high-confidence signals are detected (including suggested focus areas).
-- Includes an `Apply CV Suggestions` toggle and manual apply button so users can choose auto-fill behavior.
-- Computes a match score per opportunity with brief rationale.
-- Provides post-match filtering and sorting within the first result set.
-- Adds a due-date display option so users can quickly show/hide submission deadlines in matched results.
-- Uses progressive (doom-scroll style) result loading in batches of 20 so larger result sets remain browsable.
-- Includes score-pill hover/click context to explain how each score is computed and which gaps remain to reach 100/100.
-- Adds a concise 1-2 sentence match explanation on every opportunity card.
-- Adds UCSF collaborator matching for a selected opportunity using the UCSF Profiles API (`api.profiles.ucsf.edu`), scored by expertise overlap.
-- Uses a UCSF-aligned visual palette with A1 UCSF Navy as the dominant brand color.
-- Highlights intake labels in red when completing those fields would improve scoring signal.
+## Contents
 
-## Run locally
-Any static server works.
+- `payam-nahid-profile.html`: static webpage to share directly.
+- `scripts/build_payam_profile.py`: supporting script that can regenerate the page from UCSF profile data.
+- `README.md`: this documentation.
+
+## Page Fields
+
+The page includes these fields:
+
+- `researcher_name`: full name and credentials.
+- `institution`: UCSF.
+- `current_role`: primary role from UCSF profile.
+- `additional_roles`: additional listed roles.
+- `department`: UCSF department.
+- `school`: UCSF school.
+- `outputs_past_12m_count`: count of PubMed-indexed outputs in the last 12 months.
+- `recent_outputs`: selected outputs with `date`, `pmid`, `journal`, `title`.
+- `source_links`: links to UCSF profile, PubMed entries, and any included public LinkedIn mention.
+- `identity_confidence_score`: confidence that role/publication data is correctly matched.
+- `linkedin_match_confidence_score`: separate confidence for LinkedIn-related matching.
+
+## Build / Refresh
+
+Run from repo root:
 
 ```bash
-python3 -m http.server 8000
+python3 scripts/build_payam_profile.py
 ```
 
-Then open `http://localhost:8000`.
+This will regenerate `payam-nahid-profile.html` using current UCSF profile API data.
 
-## Run on Replit Core
-1. Import this repo into Replit from GitHub.
-2. Click `Run` (uses `.replit` to start a static server on `${PORT:-3000}`).
-3. Set Replit App visibility to `Private` and invite specific collaborators.
+## Future Work
+
+1. Add LinkedIn OAuth-based enrichment via a LinkedIn Developer App rather than scraping.
+2. Expand to multi-researcher pages and index/search views.
+3. Add structured evidence cards per claim (with timestamped provenance).
+4. Add periodic refresh automation and change-tracking diffs.
+5. Add reviewer workflow for confidence overrides and publication curation.
+6. Add deployment pipeline (GitHub Pages or internal UCSF-hosted static site).
 
 ## Notes
-- Opportunity data is seeded for demonstration, not a live grant feed.
-- The current seeded dataset includes more than 20 opportunities and supports progressive loading of all matches.
-- UCSF collaborator lookup uses profile URL names (for example `kirsten.bibbins-domingo`) because the v2 API is primarily identifier-based.
-- For production use, connect to live funding APIs and add authentication, saved searches, and reviewer workflows.
+
+- This POC uses publicly accessible metadata and is intended for demonstration/report-back.
+- Avoid scraping LinkedIn profiles directly; use approved API access and consent-based flows.
